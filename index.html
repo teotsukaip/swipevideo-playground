@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=6, user-scalable=1"
+    />
+    <title>SwipeVideo SPA サンプル（カメラタップで再生・音声）</title>
+    <link
+      rel="shortcut icon"
+      type="image/x-icon"
+      href="https://svcdndev.blob.core.windows.net/favicon.ico"
+    />
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+        background: #0f1115;
+        color: #e8eaef;
+      }
+
+      #app {
+        min-height: 100%;
+        position: relative;
+      }
+
+      /* プレイヤー領域（背面に常時マウントして初期化） */
+      .player-layer {
+        position: fixed;
+        inset: 0;
+        z-index: 1;
+        background: #000;
+      }
+
+      .swipevideo {
+        width: 100%;
+        max-width: 100%;
+        height: 100%;
+        margin: 0 auto;
+      }
+
+      /* スプラッシュ：カメラアイコンのみ */
+      .splash {
+        position: fixed;
+        inset: 0;
+        z-index: 2;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 1rem;
+        background: linear-gradient(160deg, #141824 0%, #0a0c10 100%);
+        transition: opacity 0.35s ease, visibility 0.35s ease;
+      }
+
+      .splash.is-hidden {
+        opacity: 0;
+        visibility: hidden;
+        pointer-events: none;
+      }
+
+      .splash-hint {
+        font-size: 0.9rem;
+        opacity: 0.75;
+        max-width: 18rem;
+        text-align: center;
+        line-height: 1.5;
+      }
+
+      .camera-btn {
+        border: none;
+        cursor: pointer;
+        padding: 0;
+        background: transparent;
+        border-radius: 50%;
+        outline: none;
+        transition: transform 0.15s ease, box-shadow 0.2s ease;
+      }
+
+      .camera-btn:focus-visible {
+        box-shadow: 0 0 0 3px rgba(100, 180, 255, 0.6);
+      }
+
+      .camera-btn:active {
+        transform: scale(0.96);
+      }
+
+      .camera-ring {
+        width: 112px;
+        height: 112px;
+        border-radius: 50%;
+        background: linear-gradient(145deg, #2a3142, #1a1f2a);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45),
+          inset 0 1px 0 rgba(255, 255, 255, 0.08);
+      }
+
+      .camera-ring svg {
+        width: 52px;
+        height: 52px;
+        color: #8ab4ff;
+      }
+
+      .loading-line {
+        font-size: 0.85rem;
+        opacity: 0.85;
+        min-height: 1.25em;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app">
+      <div class="player-layer" aria-hidden="true">
+        <div
+          class="swipevideo"
+          data-ref="player"
+          data-scrollsync="false"
+          data-playwithfullscreen="false"
+          data-src="https://porg006.swipevideo.live/softbank-20260409/info.json"
+        ></div>
+      </div>
+
+      <div class="splash" id="splash" role="dialog" aria-label="視聴開始">
+        <button type="button" class="camera-btn" id="cameraBtn" aria-label="再生を開始">
+          <span class="camera-ring">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+              <path
+                d="M4 7h3l1.5-2h7L17 7h3a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2z"
+                stroke-linejoin="round"
+              />
+              <circle cx="12" cy="13" r="3.25" />
+            </svg>
+          </span>
+        </button>
+        <p class="splash-hint">
+          カメラアイコンをタップすると再生画面に切り替わり、音声付きで再生します（ブラウザの仕様上、再生開始の操作が必要です）。
+        </p>
+        <p class="loading-line" id="loadingLine" hidden>プレイヤーを準備中…</p>
+      </div>
+    </div>
+
+    <script src="https://swipevideo.site/libs/embedcdn.js"></script>
+    <script>
+      const waitSwipeVideoPlayer = () => {
+        return new Promise((resolve) => {
+          if (window.swipevideo?.refs?.player) {
+            resolve(window.swipevideo.refs.player);
+            return;
+          }
+          const interval = setInterval(() => {
+            if (window.swipevideo?.refs?.player) {
+              clearInterval(interval);
+              resolve(window.swipevideo.refs.player);
+            }
+          }, 200);
+        });
+      };
+
+      const splash = document.getElementById("splash");
+      const cameraBtn = document.getElementById("cameraBtn");
+      const loadingLine = document.getElementById("loadingLine");
+
+      let started = false;
+
+      cameraBtn.addEventListener("click", async () => {
+        if (started) return;
+        started = true;
+        cameraBtn.disabled = true;
+        loadingLine.hidden = false;
+
+        try {
+          const player = await waitSwipeVideoPlayer();
+
+          /* タップ由来のユーザー操作の直後に再生＆ミュート解除（PDFの data-ref / refs パターンに準拠） */
+          player.mute = false;
+          await player.play();
+          /* autostart.html と同様 */
+          player.srcIndex = 1;
+
+          splash.classList.add("is-hidden");
+        } catch (e) {
+          console.error(e);
+          loadingLine.textContent =
+            "再生を開始できませんでした。ネットワークやコンテンツの状態を確認してください。";
+          started = false;
+          cameraBtn.disabled = false;
+        }
+      });
+    </script>
+  </body>
+</html>
